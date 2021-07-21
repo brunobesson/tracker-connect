@@ -3,10 +3,14 @@ import { Knex } from 'knex';
 export async function up(db: Knex): Promise<void> {
   await db.schema.createTable('users', (table) => {
     table.integer('c2c_id').primary();
-    table.integer('strava_id').notNullable().unique();
+    table.integer('strava_id').unique();
     table.string('strava_access_token', 256);
     table.timestamp('strava_expires_at');
     table.string('strava_refresh_token', 256);
+    table.string('suunto_username').unique();
+    table.string('suunto_access_token', 256);
+    table.timestamp('suunto_expires_at');
+    table.string('suunto_refresh_token', 256);
   });
 
   await db.schema.createTable('activities', (table) => {

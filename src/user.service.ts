@@ -3,9 +3,10 @@ import dayjs from 'dayjs';
 import { NotFoundError } from './errors';
 import { Activity } from './repository/activity';
 import { activityRepository } from './repository/activity.repository';
-import { StravaInfo, User } from './repository/user';
+import { StravaInfo, SuuntoInfo, User } from './repository/user';
 import { userRepository } from './repository/user.repository';
 import { StravaAuth, StravaRefreshAuth } from './server/strava/api';
+import { SuuntoAuth, SuuntoRefreshAuth } from './server/suunto/api';
 
 type Optional<T, K extends keyof T> = Pick<Partial<T>, K> & Omit<T, K>;
 
@@ -69,6 +70,58 @@ export class UserService {
     return user?.strava;
   }
 
+  async configureSuunto(c2cId: number, auth: SuuntoAuth): Promise<void> {
+    let user: User | undefined = await userRepository.findById(c2cId);
+    if (user) {
+      user = {
+        ...user,
+        suunto: {
+          username: auth.user,
+          access_token: auth.access_token,
+          expires_at: this.#expiresAt(auth.expires_in),
+          refresh_token: auth.refresh_token,
+        },
+      };
+      await userRepository.update(user);
+    } else {
+      user = {
+        c2cId,
+        suunto: {
+          username: auth.user,
+          access_token: auth.access_token,
+          expires_at: this.#expiresAt(auth.expires_in),
+          refresh_token: auth.refresh_token,
+        },
+      };
+      await userRepository.insert(user);
+    }
+  }
+
+  async updateSuuntoAuth(c2cId: number, auth: SuuntoRefreshAuth): Promise<void> {
+    let user: User | undefined = await userRepository.findById(c2cId);
+    if (!user) {
+      throw new NotFoundError('User not found'); // TODO enhance
+    }
+    if (!user.suunto || !user.suunto.username) {
+      throw new NotFoundError('User not configured for Suunto'); // !FIXME use another error
+    }
+    user = {
+      ...user,
+      suunto: {
+        username: user.suunto?.username,
+        access_token: auth.access_token,
+        expires_at: this.#expiresAt(auth.expires_in),
+        refresh_token: auth.refresh_token,
+      },
+    };
+    await userRepository.update(user);
+  }
+
+  async getSuuntoInfo(c2cId: number): Promise<SuuntoInfo | undefined> {
+    const user = await userRepository.findById(c2cId);
+    return user?.suunto;
+  }
+
   async addActivities(c2cId: number, ...activities: Omit<Activity, 'id' | 'userId'>[]): Promise<void> {
     let userActivities: Optional<Activity, 'id'>[] = await activityRepository.findByUser(c2cId);
     const userActivitiesKeys = new Set(userActivities.map((activity) => `${activity.vendor}_${activity.vendorId}`));
@@ -116,6 +169,10 @@ export class UserService {
 
   async getActivity(c2cId: number, activityId: number): Promise<Activity | undefined> {
     return await activityRepository.findByUserAndId(c2cId, activityId);
+  }
+
+  #expiresAt(expiresIn: number): number {
+    return Date.now() + expiresIn;
   }
 }
 
